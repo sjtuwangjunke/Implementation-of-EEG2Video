@@ -18,3 +18,5 @@ Run in order:
 python segment_raw_signals_200Hz.py
 python extract_DE_PSD_features_1per1s.py
 python extract_DE_PSD_features_1per2s.py
+```
+Remember to change the paths to your own paths
