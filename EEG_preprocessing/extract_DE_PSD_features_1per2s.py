@@ -15,11 +15,11 @@ def get_files_names_in_directory(directory):
             files_names.append(filename)
     return files_names
 
-sub_list = get_files_names_in_directory("/home/drink/SEED-DV/Segmented_Rawf_200Hz_2s/")
+sub_list = get_files_names_in_directory("SEED-DV/Segmented_Rawf_200Hz_2s/")
 
 for subname in sub_list:
 
-    loaded_data = np.load('/home/drink/SEED-DV/Segmented_Rawf_200Hz_2s/' + subname)
+    loaded_data = np.load('SEED-DV/Segmented_Rawf_200Hz_2s/' + subname)
     # (7 * 40 * 5 * 62 * 2*fre)
 
     print("Successfully loaded .npy file.")
@@ -45,5 +45,5 @@ for subname in sub_list:
         DE_data = np.concatenate((DE_data, de_block_data.reshape(1, 40, 5, 62, 5)))
         PSD_data = np.concatenate((PSD_data, psd_block_data.reshape(1, 40, 5, 62, 5)))
 
-    np.save("/home/drink/SEED-DV/DE_1per2s/" + subname, DE_data)
-    np.save("/home/drink/SEED-DV/PSD_1per2s/" + subname, PSD_data)
+    np.save("SEED-DV/DE_1per2s/" + subname, DE_data)
+    np.save("SEED-DV/PSD_1per2s/" + subname, PSD_data)
