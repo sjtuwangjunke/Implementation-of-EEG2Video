@@ -1,72 +1,93 @@
-import os
 import numpy as np
 import math
-import scipy.io as sio
-from scipy.fftpack import fft,ifft
+from scipy.fftpack import fft
 
 
 def DE_PSD(data, fre, time_window):
-    '''
-    compute DE and PSD
-    --------
-    input:  data [n*m]          n electrodes, m time points
-            stft_para.stftn     frequency domain sampling rate
-            stft_para.fStart    start frequency of each frequency band
-            stft_para.fEnd      end frequency of each frequency band
-            stft_para.window    window length of each sample point(seconds)
-            stft_para.fs        original frequency
-    output: psd,DE [n*l*k]        n electrodes, l windows, k frequency bands
-    '''
-    #initialize the parameters
-    # STFTN=stft_para['stftn']
-    # fStart=stft_para['fStart']
-    # fEnd=stft_para['fEnd']
-    # fs=stft_para['fs']
-    # window=stft_para['window']
-    
-    STFTN = 200
-    fStart = [1, 4, 8, 14, 31]
-    fEnd = [4, 8, 14, 31, 99]
-    window = time_window
-    fs = fre
+    """
+    Compute Differential Entropy (DE) and Power Spectral Density (PSD) 
+    for multi-channel EEG data.
 
-    WindowPoints=fs*window
+    Parameters
+    ----------
+    data : np.ndarray, shape (n_channels, n_samples)
+        EEG data where each row represents one electrode and each
+        column represents one time sample.
+    fre : int
+        Original sampling rate of the EEG data (samples per second).
+    time_window : float
+        Length of the sliding window (in seconds) used for FFT.
 
-    fStartNum=np.zeros([len(fStart)],dtype=int)
-    fEndNum=np.zeros([len(fEnd)],dtype=int)
-    for i in range(0,len(fStart)):
-        fStartNum[i]=int(fStart[i]/fs*STFTN)
-        fEndNum[i]=int(fEnd[i]/fs*STFTN)
+    Returns
+    -------
+    de : np.ndarray, shape (n_channels, n_bands)
+        Differential entropy for each channel and each frequency band.
+    psd : np.ndarray, shape (n_channels, n_bands)
+        Power spectral density for each channel and each frequency band.
+    """
 
-    #print(fStartNum[0],fEndNum[0])
-    n=data.shape[0]
-    m=data.shape[1]
+    # ------------------------------------------------------------------
+    # 1. Configuration of frequency bands and FFT parameters
+    # ------------------------------------------------------------------
+    STFTN = 200                  # FFT length (frequency-domain sampling points)
+    fStart = [1, 4, 8, 14, 31]   # Start frequencies (Hz) of each band
+    fEnd   = [4, 8, 14, 31, 99]  # End frequencies (Hz) of each band
+    window = time_window         # Window length in seconds
+    fs = fre                     # Sampling rate (Hz)
 
-    #print(m,n,l)
-    psd = np.zeros([n,len(fStart)])
-    de = np.zeros([n,len(fStart)])
-    #Hanning window
-    Hlength=window*fs
-    #Hwindow=hanning(Hlength)
-    Hwindow= np.array([0.5 - 0.5 * np.cos(2 * np.pi * n / (Hlength+1)) for n in range(1,Hlength+1)])
+    # Convert frequency boundaries to FFT bin indices
+    fStartNum = np.zeros(len(fStart), dtype=int)
+    fEndNum   = np.zeros(len(fEnd), dtype=int)
+    for i in range(len(fStart)):
+        fStartNum[i] = int(fStart[i] / fs * STFTN)
+        fEndNum[i]   = int(fEnd[i]   / fs * STFTN)
 
-    WindowPoints=fs*window
-    dataNow=data[0:n]
-    for j in range(0,n):
-        temp=dataNow[j]
-        Hdata=temp*Hwindow
-        FFTdata=fft(Hdata,STFTN)
-        magFFTdata=abs(FFTdata[0:int(STFTN/2)])
-        for p in range(0,len(fStart)):
-            E = 0
-            #E_log = 0
-            for p0 in range(fStartNum[p]-1,fEndNum[p]):
-                E=E+magFFTdata[p0]*magFFTdata[p0]
-            #    E_log = E_log + log2(magFFTdata(p0)*magFFTdata(p0)+1)
-            E = E/(fEndNum[p]-fStartNum[p]+1)
-            psd[j][p] = E
-            de[j][p] = math.log(100*E,2)
-            #de(j,i,p)=log2((1+E)^4)
-    
+    # Number of electrodes and samples
+    n_channels = data.shape[0]
+    n_samples  = data.shape[1]
+
+    # Output arrays
+    psd = np.zeros([n_channels, len(fStart)])
+    de  = np.zeros([n_channels, len(fStart)])
+
+    # ------------------------------------------------------------------
+    # 2. Construct Hanning window for spectral leakage reduction
+    # ------------------------------------------------------------------
+    Hlength = int(window * fs)  # Window length in samples
+    # Hanning window formula: 0.5 - 0.5 * cos(2*pi*n/(N+1))
+    Hwindow = np.array([0.5 - 0.5 * np.cos(2 * np.pi * n / (Hlength + 1))
+                        for n in range(1, Hlength + 1)])
+
+    # ------------------------------------------------------------------
+    # 3. Loop over each channel and compute PSD & DE
+    # ------------------------------------------------------------------
+    for ch in range(n_channels):
+        # Extract signal for current channel
+        signal = data[ch, :]
+
+        # Apply Hanning window to reduce spectral leakage
+        windowed_signal = signal[:Hlength] * Hwindow
+
+        # Compute FFT of the windowed segment
+        fft_data = fft(windowed_signal, STFTN)
+
+        # Compute magnitude (one-sided spectrum)
+        mag_fft = np.abs(fft_data[:STFTN // 2])
+
+        # ------------------------------------------------------------------
+        # 4. Compute PSD and DE for each frequency band
+        # ------------------------------------------------------------------
+        for band_idx in range(len(fStart)):
+            # Sum power within the band
+            power_sum = 0.0
+            for bin_idx in range(fStartNum[band_idx], fEndNum[band_idx] + 1):
+                power_sum += mag_fft[bin_idx] ** 2
+
+            # Average power within the band
+            band_width = fEndNum[band_idx] - fStartNum[band_idx] + 1
+            psd[ch, band_idx] = power_sum / band_width
+
+            # Differential entropy: log2(100 * average power)
+            de[ch, band_idx] = math.log(100 * psd[ch, band_idx], 2)
+
     return de, psd
-
