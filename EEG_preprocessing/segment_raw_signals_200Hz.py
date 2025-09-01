@@ -15,10 +15,10 @@ def get_files_names_in_directory(directory):
             files_names.append(filename)
     return files_names
 
-sub_list = get_files_names_in_directory("/home/drink/SEED-DV/EEG/")
+sub_list = get_files_names_in_directory("SEED-DV/EEG/")
 
 for subname in sub_list:
-    npydata = np.load('/home/drink/SEED-DV/EEG/' + subname)
+    npydata = np.load('SEED-DV/EEG/' + subname)
 
     save_data = np.empty((0, 40, 5, 62, 2*fre))
 
@@ -36,4 +36,4 @@ for subname in sub_list:
             block_data = np.concatenate((block_data, class_data.reshape(1, 5, 62, 2*fre)))
         save_data = np.concatenate((save_data, block_data.reshape(1, 40, 5, 62, 2*fre)))
 
-    np.save('/home/drink/SEED-DV/Segmented_Rawf_200Hz_2s/' + subname, save_data)
+    np.save('SEED-DV/Segmented_Rawf_200Hz_2s/' + subname, save_data)
