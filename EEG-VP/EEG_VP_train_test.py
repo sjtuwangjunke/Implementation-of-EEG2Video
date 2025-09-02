@@ -1,39 +1,34 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import time
-
 import os
 import numpy as np
-import pandas as pd
 import torch
 from torch import nn
 from torch.utils import data
-from torch.nn.parameter import Parameter
-import numpy as np
-import matplotlib.pyplot as plt
 from sklearn import metrics
-from sklearn.model_selection import train_test_split
-# import scikitplot as skplt
-from matplotlib import pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from einops import rearrange
 import models
 import time
-###################################### Hyperparameters ###################################
-batch_size = 256
-num_epochs = 500
-lr = 0.001   # learning rate
-C = 62       # the number of channels
-T = 5        # the time samples of EEG signals
-output_dir = './output_dir/'
-network_name = "GLMNet_mlp"
-saved_model_path = output_dir + network_name + '_40c.pth'
 
-run_device = "cuda"
+# ------------------------------- Hyper-parameters ----------------------------------------
+batch_size   = 256          # mini-batch size
+num_epochs   = 100          # max training epochs
+lr           = 0.001        # learning rate
+C            = 62           # number of EEG channels
+T            = 5            # number of time samples per trial
+output_dir   = './output_dir/'
+network_name = "GLMNet" # model identifier
+saved_model_path = output_dir + network_name + '_40c.pth'  # where to save the best model
+run_device   = "cuda"       # or "cpu"
+starttimer = time.time()    # global timer
 
-##########################################################################################
-starttimer = time.time()
+# -----------------------------------------------------------------------------------------
+# 2. Utility Functions
+# -----------------------------------------------------------------------------------------
 def my_normalize(data_array):
+    """
+    Channel-wise Z-score normalization across the flattened (C*T) vector,
+    then reshape back to (samples, C, T).
+    """
     data_array = data_array.reshape(data_array.shape[0], C*T)
     normalize = StandardScaler()
     normalize.fit(data_array)
@@ -44,6 +39,9 @@ def show_accuracy(a, b, tip):
     print('%s Accuracy:%.3f' % (tip, np.mean(acc)))
 
 def Get_subject(f):
+    """
+    e.g. filename "12_*" -> subject ID 12
+    """
     if(f[1] == '_'):
         return int(f[0])
     return int(f[0])*10 + int(f[1])
@@ -53,7 +51,8 @@ def Get_Dataloader(datat, labelt, istrain, batch_size):
     labels = torch.tensor(labelt, dtype=torch.long)
     return data.DataLoader(data.TensorDataset(features, labels), batch_size, shuffle=istrain)
 
-class Accumulator:  #@save
+class Accumulator:
+    """Metric accumulator (loss, correct, total)."""
     def __init__(self, n):
         self.data = [0.0] * n
 
@@ -67,6 +66,7 @@ class Accumulator:  #@save
         return self.data[idx]
 
 class Timer:
+    """Simple stop-watch."""
     def __init__(self):
         self.times = []
         self.start()
@@ -83,12 +83,14 @@ class Timer:
         return np.array(self.times).cumsum().tolist()
 
 def cal_accuracy(y_hat, y):
+    """Return number of correct predictions."""
     if len(y_hat.shape) > 1 and y_hat.shape[1] > 1:
         y_hat = torch.argmax(y_hat, axis=1)
     cmp = (y_hat == y)
     return torch.sum(cmp, dim=0)
 
 def evaluate_accuracy_gpu(net, data_iter, device=None):
+    """Evaluate accuracy on a given dataloader using GPU."""
     if isinstance(net, nn.Module):
         net.eval()
         if not device:
@@ -104,8 +106,11 @@ def evaluate_accuracy_gpu(net, data_iter, device=None):
     return metric[0] / metric[1]
 
 def topk_accuracy(output, target, topk=(1, )):       
-    # output.shape (bs, num_classes), target.shape (bs, )
-    """Computes the accuracy over the k top predictions for the specified values of k"""
+    """
+    Compute top-k accuracy for k in topk.
+    output: (batch_size, n_classes)
+    target: (batch_size,)
+    """
     with torch.no_grad():
         maxk = max(topk)
         batch_size = target.size(0)
@@ -120,23 +125,23 @@ def topk_accuracy(output, target, topk=(1, )):
             res.append(correct_k.mul_(1.0 / batch_size).item())
         return res
 
-#训练函数
+# -----------------------------------------------------------------------------------------
+# 3. Training Function
+# -----------------------------------------------------------------------------------------
 def train(net, train_iter, val_iter, test_iter, num_epochs, lr, device, save_path):
+    """Main training loop."""
+    # Xavier initialization
     def init_weights(m):
         if type(m) == nn.Linear or type(m) == nn.Conv2d:
             nn.init.xavier_uniform_(m.weight)
     net.apply(init_weights)
     print('training on', device)
     net.to(device)
+    
     optimizer = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=0)
     loss = nn.CrossEntropyLoss()
     
-    timer, num_bathces = Timer(), len(train_iter)
-    
-    best_test_acc = -1
-    
-    best_model = net
-    
+    timer, num_bathces = Timer(), len(train_iter)    
     best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(num_epochs):
@@ -152,36 +157,26 @@ def train(net, train_iter, val_iter, test_iter, num_epochs, lr, device, save_pat
             optimizer.step()
             metric.add(l * X.shape[0], cal_accuracy(y_hat, y), X.shape[0])
             timer.stop()
-            train_l = metric[0] / metric[2]
-            train_acc = metric[1] / metric[2]
-            # if(i + 1) % (num_bathces // 5) == 0 or i == num_bathces:
-            #     print(f'{epoch + (i+1) / num_bathces} : , train_l:{train_l}, train_acc:{train_acc}')
+            
+        train_l = metric[0] / metric[2]
+        train_acc = metric[1] / metric[2]
         test_acc = evaluate_accuracy_gpu(net, test_iter)
-        
         val_acc = evaluate_accuracy_gpu(net, val_iter)
+        
+        # Save best validation model
         if(val_acc > best_val_acc):
             best_val_acc = val_acc
             torch.save(net, save_path)
         
-        if(epoch % 3 == 0):        
-            print(f'loss {train_l:.3f}, train acc {train_acc:.3f}, val acc {val_acc:.3f},'f'test acc {test_acc:.3f}')
-            print(f'{metric[2] * num_epochs / timer.sum():.1f} examples/sec 'f'on {str(device)}')
-            # print('Saving model!')
-            # # Save model to specified path
-            # torch.save(net.state_dict(), './NeuralNetworkLvBaoliang/CNN_hw3/' + 'Alexnet.pth')
-    # test_pred = np.array([])
-    # for X, y in test_iter:
-    #     X, y = X.to(device), y.to(device)
-    #     y_hat = net(X)
-    #     y_hat = torch.argmax(y_hat, axis=1)
-    #     y_hat = y_hat.cpu().numpy()
-    #     y_hat = y_hat.reshape(y_hat.shape[0])
-    #     test_pred = np.concatenate((test_pred,y_hat))    
-    
-    # torch.save(net, save_path)
-    return best_val_acc   
+        if epoch % 3 == 0:
+            print(f'loss {train_l:.3f}, train acc {train_acc:.3f}, '
+                  f'val acc {val_acc:.3f}, test acc {test_acc:.3f}')
+            print(f'{metric[2] * num_epochs / timer.sum():.1f} examples/sec on {str(device)}')
+    return best_val_acc
 
-
+# -----------------------------------------------------------------------------------------
+# 4. Pre-defined Global Labels (40 classes)
+# -----------------------------------------------------------------------------------------
 GT_label = np.array([[23, 22, 9, 6, 18,       14, 5, 36, 25, 19,      28, 35, 3, 16, 24,      40, 15, 27, 38, 33, 
              34, 4, 39, 17, 1,       26, 20, 29, 13, 32,     37, 2, 11, 12, 30,      31, 8, 21, 7, 10, ],
             [27, 33, 22, 28, 31,     12, 38, 4, 18, 17,      35, 39, 40, 5, 24,      32, 15, 13, 2, 16,
@@ -197,11 +192,16 @@ GT_label = np.array([[23, 22, 9, 6, 18,       14, 5, 36, 25, 19,      28, 35, 3,
             [38, 34, 40, 10, 28,     7, 1, 37, 22, 9,        16, 5, 12, 36, 20,      30, 6, 15, 35, 2,      
              31, 26, 18, 24, 8,      3, 23, 19, 14, 13,      21, 4, 25, 11, 32,      17, 39, 29, 33, 27]
             ])
-GT_label = GT_label - 1
+GT_label = GT_label - 1  # convert 1-based -> 0-based labels
+
+# Build 7×400 label matrix (each block has 40 trials × 10 repeats)
 All_label = np.empty((0, 400))
 for block_id in range(7):
     All_label = np.concatenate((All_label, GT_label[block_id].repeat(10).reshape(1, 400)))
 
+# -----------------------------------------------------------------------------------------
+# 5. Loading All Subjects and 7-Fold LOSO Evaluation
+# -----------------------------------------------------------------------------------------
 def get_files_names_in_directory(directory):
     files_names = []
     for root, _, filenames in os.walk(directory):
@@ -217,25 +217,24 @@ All_sub_top5 = []
 for subname in sub_list:
     load_npy = np.load("/home/drink/SEED-DV/DE_1per1s/" + subname)
 
-    print(load_npy.shape)
-
     all_test_label = np.array([])
     all_test_pred = np.array([])
 
-    print(load_npy.shape)
-
-    print("shape = ", load_npy.shape)
-
+    # Flatten blocks×trials into 400 trials per block
     All_train = rearrange(load_npy, 'a b c d e f -> a (b c d) e f')
-    print(All_train.shape)
 
     Top_1 = []
     Top_K = []
-
+    all_test_pred  = np.array([])
+    all_test_label = np.array([])
+    
+    # 7-fold LOSO: test on one block, val on previous, train on rest
     for test_set_id in range(7):
         val_set_id = test_set_id - 1
         if(val_set_id < 0):
             val_set_id = 6
+            
+        # Concatenate training data/labels
         train_data = np.empty((0, 62, 5))
         train_label = np.empty((0))
         for i in range(7):
@@ -247,44 +246,43 @@ for subname in sub_list:
         test_label = All_label[test_set_id]
         val_data = All_train[val_set_id]
         val_label = All_label[val_set_id]
-
+        
+        # Flatten spatial-temporal -> (samples, 310)
         train_data = train_data.reshape(train_data.shape[0], 62*5)
         test_data = test_data.reshape(test_data.shape[0], 62*5)
         val_data = val_data.reshape(val_data.shape[0], 62*5)
 
-        #对训练数据和测试数据归一化
+        # Normalize each split independently
         normalize = StandardScaler()
         normalize.fit(train_data)
-        train_data = normalize.transform(train_data)  #分别进行归一化
+        train_data = normalize.transform(train_data) 
         normalize = StandardScaler()
         normalize.fit(test_data)
         test_data = normalize.transform(test_data)
         normalize = StandardScaler()
         normalize.fit(val_data)
         val_data = normalize.transform(val_data)
-            
-        modelnet = models.glfnet_mlp(out_dim=40, emb_dim=64, input_dim=310)
-        # backdoor_net = nn.Sequential(nn.Flatten(), nn.Linear(200, 256), nn.ReLU(),
-        #                              nn.Linear(256, 256), nn.ReLU(),
-        #                              nn.Linear(256, 256), nn.ReLU(),
-        #                              nn.Linear(256, 5))
-
-        # norm_backdoor_train_data = my_normalize(backdoor_data).reshape(backdoor_data.shape[0], 1, C, T)
-        # norm_test_data = my_normalize(test_data).reshape(test_data.shape[0], 1, C, T)
-
+        
+        # Reshape back for CNN: (samples, channels, time)
         norm_train_data = train_data.reshape(train_data.shape[0], C, T)
         norm_test_data = test_data.reshape(test_data.shape[0], C, T)
         norm_val_data = val_data.reshape(val_data.shape[0], C, T)
+        
+        # Data loaders
         train_iter = Get_Dataloader(norm_train_data, train_label, istrain=True, batch_size=batch_size)
         test_iter = Get_Dataloader(norm_test_data, test_label, istrain=False, batch_size=batch_size)
         val_iter = Get_Dataloader(norm_val_data, val_label, istrain=False, batch_size=batch_size)
 
-        now_pred = np.array([])
-
-        accu = train(modelnet, train_iter, val_iter, test_iter, num_epochs, lr, run_device, save_path=saved_model_path)
+        # Instantiate model
+        # ***change model here to compare***
+        modelnet = models.GLMNet(out_dim=40, emb_dim=64, input_dim=310)
         
-        print("acc : =", accu)
-
+        now_pred = np.array([])
+        # Train and save best validation model
+        accu = train(modelnet, train_iter, val_iter, test_iter, num_epochs, lr, run_device, save_path=saved_model_path)
+        print("accuracy : =", accu)
+        
+        # Load best checkpoint for final evaluation
         loaded_model = torch.load(saved_model_path, weights_only=False)
         loaded_model.to(run_device)
 
@@ -310,12 +308,14 @@ for subname in sub_list:
         print("top5_acc = ", top_k_acc)
         Top_1.append(top_1_acc)
         Top_K.append(top_k_acc)
-        
-        # break
-
+    
+    # -------------------------------------------------------------------------------------
+    # 6. Final Reporting for Current Subject
+    # -------------------------------------------------------------------------------------
     print(metrics.classification_report(all_test_label, all_test_pred))
     np.seterr(divide='ignore', invalid='ignore')
-
+    
+    # Manual confusion matrix
     proper = [0] * 40
     num = [0] * 40
     conf = np.zeros(shape=(40, 40))
@@ -327,29 +327,32 @@ for subname in sub_list:
             proper[l] = proper[l] + 1
         conf[l][p] = conf[l][p] + 1
 
-    print('confusion_matrix=eev======================================')
+    print("Confusion matrix:")
     print(conf)
-    print(proper)
-    print(num)
+    print("Correct per class:", proper)
+    print("Support per class:", num)
 
-    print("test_accu = ", np.sum(np.array(proper)) / np.sum(np.array(num)))
-    print("test_Top_1_accu = ", np.mean(np.array(Top_1)))
-    print("test_Top_5_accu = ", np.mean(np.array(Top_K)))
+    print("Overall accuracy :", np.sum(np.array(proper)) / np.sum(np.array(num)))
+    print("Mean Top-1 across folds :", np.mean(np.array(Top_1)))
+    print("Mean Top-5 across folds :", np.mean(np.array(Top_K)))
     All_sub_top1.append(np.mean(np.array(Top_1)))
     All_sub_top5.append(np.mean(np.array(Top_K)))
 
+    # Save predictions and labels for later analysis
     save_results = np.concatenate((all_test_pred.reshape(1, all_test_label.shape[0]), all_test_label.reshape(1, all_test_label.shape[0])))
-    print(save_results.shape)
-
     np.save('./ClassificationResults/40c_top1/'+network_name+'_Predict_Label_' + subname, save_results)
 
-    # break
+# -----------------------------------------------------------------------------------------
+# 7. Grand Summary over All Subjects
+# -----------------------------------------------------------------------------------------
+print("All subjects Top-1:", All_sub_top1)
+print("All subjects Top-5:", All_sub_top5)
 
-print(All_sub_top1)
-print(All_sub_top5)
+print("\nGrand Mean ± Std")
+print("TOP1:", np.mean(All_sub_top1), "±", np.std(All_sub_top1))
+print("TOP5:", np.mean(All_sub_top5), "±", np.std(All_sub_top5))
+print("Wall-clock time (s):", time.time() - starttimer)
 
-print("\nTOP1: ", np.mean(np.array(All_sub_top1)), np.std(np.array(All_sub_top1)))
-print("TOP5: ", np.mean(np.array(All_sub_top5)), np.std(np.array(All_sub_top5)))
-print(time.time() - starttimer)
+# Save final results
 np.save('./ClassificationResults/40c_top1/'+network_name+'_All_subject_acc.npy', np.array(All_sub_top1))
 np.save('./ClassificationResults/40c_top5/'+network_name+'_All_subject_acc.npy', np.array(All_sub_top5))
