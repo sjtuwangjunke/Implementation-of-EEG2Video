@@ -209,13 +209,13 @@ def get_files_names_in_directory(directory):
             files_names.append(filename)
     return files_names
 
-sub_list = get_files_names_in_directory("/home/drink/SEED-DV/DE_1per1s/")
+sub_list = get_files_names_in_directory("SEED-DV/DE_1per1s/")
 
 All_sub_top1 = []
 All_sub_top5 = []
 
 for subname in sub_list:
-    load_npy = np.load("/home/drink/SEED-DV/DE_1per1s/" + subname)
+    load_npy = np.load("SEED-DV/DE_1per1s/" + subname)
 
     all_test_label = np.array([])
     all_test_pred = np.array([])
