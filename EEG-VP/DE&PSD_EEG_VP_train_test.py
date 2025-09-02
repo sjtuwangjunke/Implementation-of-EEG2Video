@@ -17,7 +17,7 @@ C            = 62           # number of EEG channels
 T            = 5            # number of time samples per trial
 output_dir   = './output_dir/'
 network_name = "GLMNet" # model identifier
-saved_model_path = output_dir + network_name + '_40c.pth'  # where to save the best model
+saved_model_path = output_dir + "DE_1per1s/" + network_name + '_40c.pth'  # where to save the best model
 run_device   = "cuda"       # or "cpu"
 starttimer = time.time()    # global timer
 
@@ -340,7 +340,7 @@ for subname in sub_list:
 
     # Save predictions and labels for later analysis
     save_results = np.concatenate((all_test_pred.reshape(1, all_test_label.shape[0]), all_test_label.reshape(1, all_test_label.shape[0])))
-    np.save('./ClassificationResults/40c_top1/'+network_name+'_Predict_Label_' + subname, save_results)
+    np.save('./ClassificationResults/40c_top1/DE_1per1s/'+network_name+'_Predict_Label_' + subname, save_results)
 
 # -----------------------------------------------------------------------------------------
 # 7. Grand Summary over All Subjects
@@ -354,5 +354,5 @@ print("TOP5:", np.mean(All_sub_top5), "±", np.std(All_sub_top5))
 print("Wall-clock time (s):", time.time() - starttimer)
 
 # Save final results
-np.save('./ClassificationResults/40c_top1/'+network_name+'_All_subject_acc.npy', np.array(All_sub_top1))
-np.save('./ClassificationResults/40c_top5/'+network_name+'_All_subject_acc.npy', np.array(All_sub_top5))
+np.save('./ClassificationResults/40c_top1/DE_1per1s/'+network_name+'_All_subject_acc.npy', np.array(All_sub_top1))
+np.save('./ClassificationResults/40c_top5/DE_1per1s/'+network_name+'_All_subject_acc.npy', np.array(All_sub_top5))
