@@ -394,7 +394,7 @@ class mlpnet(nn.Module):
         out = self.net(x)
         return out
 
-class GLMNet(nn.Module):#input:(batch,channels_conv,channels_eeg,data_num)  output:(batch,num_classes)
+class GLMNet(nn.Module): #input:(batch,channels_conv,channels_eeg,data_num)  output:(batch,num_classes)
     """
     Global-Local MLP fusion for multi-channel feature maps.
     """
@@ -410,6 +410,48 @@ class GLMNet(nn.Module):#input:(batch,channels_conv,channels_eeg,data_num)  outp
         
     
     def forward(self, x):               #input:(batch,C,5)
+        global_feature = self.globalnet(x)
+        occipital_x = x[:, self.occipital_index, :]
+        occipital_feature = self.occipital_localnet(occipital_x)
+        out = self.out(torch.cat((global_feature, occipital_feature), 1))
+        return out
+    
+class mlpnet_raw(nn.Module):
+    """
+    Simple MLP baseline.
+    """
+    def __init__(self, out_dim, input_dim):
+        super(mlpnet_raw, self).__init__()
+        
+        self.net = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(input_dim, 512),
+            nn.GELU(),
+            nn.Linear(512, 256),
+            nn.GELU(),
+            nn.Linear(256, out_dim)
+        )
+        
+    def forward(self, x):               #input:(batch,C,T)
+        out = self.net(x)
+        return out
+
+class GLMNet_raw(nn.Module): #input:(batch,channels_conv,channels_eeg,data_num)  output:(batch,num_classes)
+    """
+    Global-Local MLP fusion for multi-channel feature maps.
+    """
+    def __init__(self, out_dim, emb_dim, input_dim, time_step):
+        super(GLMNet_raw, self).__init__()
+        
+        self.globalnet = mlpnet_raw(emb_dim, input_dim)
+        
+        self.occipital_index = list(range(50, 62))
+        self.occipital_localnet = mlpnet(emb_dim, 12*time_step)
+        
+        self.out = nn.Linear(emb_dim*2, out_dim)
+        
+    
+    def forward(self, x):               #input:(batch,C,T)
         global_feature = self.globalnet(x)
         occipital_x = x[:, self.occipital_index, :]
         occipital_feature = self.occipital_localnet(occipital_x)
