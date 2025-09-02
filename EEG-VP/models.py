@@ -1,35 +1,19 @@
-"""
-Different EEG encoders for comparison
-
-SA GA
-
-shallownet, deepnet, eegnet, conformer, tsconv
-"""
-
-
-import os
-import argparse
 import math
-import glob
-import random
-import itertools
-import datetime
-import time
-import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.nn.init as init
 from torch import Tensor
-from torch.autograd import Variable
 from einops import rearrange
 from einops.layers.torch import Rearrange, Reduce
 
 
+"""
+Different EEG encoders for comparison
+shallownet, deepnet, eegnet, conformer, tsconv
+"""
 class PatchEmbedding(nn.Module):
     def __init__(self, emb_size=40):
-        # self.patch_size = patch_size
         super().__init__()
         self.tsconv = nn.Sequential(
             nn.Conv2d(1, 40, (1, 25), (1, 1)),
@@ -103,6 +87,9 @@ class PatchEmbedding(nn.Module):
         return x
 
 class shallownet(nn.Module):
+    """
+    Shallow ConvNet: two-layer CNN with aggressive pooling.
+    """
     def __init__(self, out_dim, C, T):
         super(shallownet, self).__init__()
         
@@ -123,6 +110,9 @@ class shallownet(nn.Module):
         return x
     
 class deepnet(nn.Module):
+    """
+    Deep ConvNet: four blocks of conv->norm->activation->pool->drop.
+    """
     def __init__(self, out_dim, C, T):
         super(deepnet, self).__init__()
         
@@ -161,6 +151,9 @@ class deepnet(nn.Module):
         return x
     
 class eegnet(nn.Module):
+    """
+    EEGNet: depth-wise separable convolutions.
+    """
     def __init__(self, out_dim, C, T):
         super(eegnet, self).__init__()
         
@@ -187,6 +180,9 @@ class eegnet(nn.Module):
         return x
 
 class tsconv(nn.Module):
+    """
+    Temporal-Spatial ConvNet: temporal conv followed by spatial conv.
+    """
     def __init__(self, out_dim, C, T):
         super(tsconv, self).__init__()
         
@@ -208,11 +204,13 @@ class tsconv(nn.Module):
         x = self.out(x)
         return x
 
-# Convolution module
-# use conv to capture local features, instead of postion embedding.
+# ----------- Transformer components -----------
+# Convolution module, use conv to capture local features, instead of postion embedding.
 class PatchEmbedding(nn.Module):
+    """
+    Patch embedding for transformer-based models.
+    """
     def __init__(self, emb_size=40):
-        # self.patch_size = patch_size
         super().__init__()
 
         self.shallownet = nn.Sequential(
@@ -236,8 +234,10 @@ class PatchEmbedding(nn.Module):
         x = self.projection(x)
         return x
 
-
 class MultiHeadAttention(nn.Module):
+    """
+    Multi-head self-attention.
+    """
     def __init__(self, emb_size, num_heads, dropout):
         super().__init__()
         self.emb_size = emb_size
@@ -265,7 +265,6 @@ class MultiHeadAttention(nn.Module):
         out = self.projection(out)
         return out
 
-
 class ResidualAdd(nn.Module):
     def __init__(self, fn):
         super().__init__()
@@ -277,7 +276,6 @@ class ResidualAdd(nn.Module):
         x += res
         return x
 
-
 class FeedForwardBlock(nn.Sequential):
     def __init__(self, emb_size, expansion, drop_p):
         super().__init__(
@@ -287,11 +285,9 @@ class FeedForwardBlock(nn.Sequential):
             nn.Linear(expansion * emb_size, emb_size),
         )
 
-
 class GELU(nn.Module):
     def forward(self, input: Tensor) -> Tensor:
         return input*0.5*(1.0+torch.erf(input/math.sqrt(2.0)))
-
 
 class TransformerEncoderBlock(nn.Sequential):
     def __init__(self,
@@ -314,17 +310,17 @@ class TransformerEncoderBlock(nn.Sequential):
             )
             ))
 
-
 class TransformerEncoder(nn.Sequential):
     def __init__(self, depth, emb_size):
         super().__init__(*[TransformerEncoderBlock(emb_size) for _ in range(depth)])
 
-
 class ClassificationHead(nn.Sequential):
+    """
+    Global average pooling followed by a linear classifier.
+    """
     def __init__(self, emb_size, out_dim):
         super().__init__()
         
-        # global average pooling
         self.clshead = nn.Sequential(
             Reduce('b n e -> b e', reduction='mean'),
             nn.LayerNorm(emb_size),
@@ -339,8 +335,10 @@ class ClassificationHead(nn.Sequential):
         out = self.fc(x)
         return out
 
-
 class conformer(nn.Sequential):
+    """
+    Conformer: CNN patch embedding + transformer encoder + classifier.
+    """
     def __init__(self, emb_size=40, depth=3, out_dim=4, **kwargs):
         super().__init__(
             PatchEmbedding(emb_size),
@@ -349,7 +347,11 @@ class conformer(nn.Sequential):
             ClassificationHead(emb_size, out_dim)
         )
 
+# ----------- Global–Local Fusion models -----------
 class glfnet(nn.Module):
+    """
+    Global-Local Fusion network for EEG.
+    """
     def __init__(self, out_dim, emb_dim, C, T):
         super(glfnet, self).__init__()
         
@@ -373,6 +375,9 @@ class glfnet(nn.Module):
         return out
 
 class mlpnet(nn.Module):
+    """
+    Simple MLP baseline.
+    """
     def __init__(self, out_dim, input_dim):
         super(mlpnet, self).__init__()
         
@@ -389,9 +394,12 @@ class mlpnet(nn.Module):
         out = self.net(x)
         return out
 
-class glfnet_mlp(nn.Module):
+class GLMNet(nn.Module):#input:(batch,channels_conv,channels_eeg,data_num)  output:(batch,num_classes)
+    """
+    Global-Local MLP fusion for multi-channel feature maps.
+    """
     def __init__(self, out_dim, emb_dim, input_dim):
-        super(glfnet_mlp, self).__init__()
+        super(GLMNet, self).__init__()
         
         self.globalnet = mlpnet(emb_dim, input_dim)
         
@@ -403,20 +411,7 @@ class glfnet_mlp(nn.Module):
     
     def forward(self, x):               #input:(batch,C,5)
         global_feature = self.globalnet(x)
-        # global_feature = global_feature.view(x.size(0), -1)
-        # global_feature = self.out(global_feature)
         occipital_x = x[:, self.occipital_index, :]
-        # print("occipital_x.shape = ", occipital_x.shape)
         occipital_feature = self.occipital_localnet(occipital_x)
-        # print("occipital_feature.shape = ", occipital_feature.shape)
         out = self.out(torch.cat((global_feature, occipital_feature), 1))
         return out
-
-if __name__ == "__main__":
-    # model = glfnet(out_dim=3, emb_dim=256, C=62, T=200)  #input:(batch,channels_conv,channels_eeg,data_num)  output:(batch,num_classes)
-    model = glfnet_mlp(out_dim=3, emb_dim=64, input_dim=310)
-    x = torch.rand(size=(1, 62, 5))
-    print(x.shape)
-    y = model(x)
-    print(y.shape)  #if input(b,1,1,3000),then the output is(1,num_classes)
-    print(y)
