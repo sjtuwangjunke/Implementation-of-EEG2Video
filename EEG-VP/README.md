@@ -5,7 +5,12 @@ This repository provides a lightweight PyTorch implementation for decoding gaze 
 ## Quick Start
 First change the paths of the dataset, output directory and the result directory to your own.
 
-Then run 
+To train and test on raw signals(Segmented during the preprocessing), run
 ```bash
-python EEG_VP_train_test.py
+python Raw_EEG_VP_train_test.py
+```
+
+To train and test on DE or PSD features(1 second), run
+```bash
+python DE&PSD_EEG_VP_train_test.py
 ```
