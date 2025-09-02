@@ -209,20 +209,17 @@ def get_files_names_in_directory(directory):
             files_names.append(filename)
     return files_names
 
-sub_list = get_files_names_in_directory("/home/drink/SEED-DV/Segmented_Rawf_200Hz_2s/")
+sub_list = get_files_names_in_directory("SEED-DV/Segmented_Rawf_200Hz_2s/")
 
 All_sub_top1 = []
 All_sub_top5 = []
 
 for subname in sub_list:
-    load_npy = np.load("/home/drink/SEED-DV/Segmented_Rawf_200Hz_2s/" + subname) #(7, 40, 5, 62, 400)
+    load_npy = np.load("SEED-DV/Segmented_Rawf_200Hz_2s/" + subname) #(7, 40, 5, 62, 400)
 
     all_test_label = np.array([])
     all_test_pred = np.array([])
     # Flatten blocks×trials into 400 trials per block
-    # #DE&PSD
-    #All_train = rearrange(load_npy, 'a b c d e f -> a (b c d) e f') 
-    # Raw
     All_train = rearrange(load_npy, 'a b c d (e f)-> a b c d e f', f=T) #(7, 40, 5, 62, 2, 200)
     All_train = rearrange(All_train, 'a b c d e f-> a (b c e) d f') #(7, 400, 62, 200)
     Top_1 = []
