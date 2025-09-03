@@ -22,7 +22,7 @@ def get_source_info_opencv(source_name):
     return return_value
 
 for video_id in range(1, 8):  
-    video_path = "/home/drink/SEED-DV/Video/" + ordinal(video_id) + "_10min.mp4"
+    video_path = "SEED-DV/Video/" + ordinal(video_id) + "_10min.mp4"
     print("Processing video: ", video_path)
     get_source_info_opencv(video_path)
     
@@ -54,5 +54,5 @@ for video_id in range(1, 8):
         for j in range(0, 48, 8):  # pick every 8th frame → 6 frames total
             gif_frame.append(all_frame[j])    
         print("k = ", k)
-        imageio.mimsave('/home/drink/SEED-DV/Video_Gif/Block' + str(video_id) + '/'+str(k)+'.gif', gif_frame, 'GIF', duration=0.33333)  # save gif
+        imageio.mimsave('SEED-DV/Video_Gif/Block' + str(video_id) + '/'+str(k)+'.gif', gif_frame, 'GIF', duration=0.33333)  # save gif
         k += 1
