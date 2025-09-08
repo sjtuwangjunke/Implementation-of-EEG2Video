@@ -1,5 +1,4 @@
 import math
-import random
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,6 +12,11 @@ max_length = 16
 
 
 class MyEEGNet_embedding(nn.Module):
+    """
+    EEGNet-like feature extractor producing a d_model-dimensional vector per EEG trial.
+    Input shape: (B, 1, C, T) = (batch, 1, 62 channels, 200 time-points)
+    Output shape: (B, d_model)
+    """
     def __init__(self, d_model=128, C=62, T=200, F1=16, D=4, F2=16, cross_subject=False):
         super(MyEEGNet_embedding, self).__init__()
         if (cross_subject == True):
@@ -86,41 +90,45 @@ class MyEEGNet_embedding(nn.Module):
 
 
 class PositionalEncoding(nn.Module):
-    "Implement the PE function."
-
+    """
+    Standard sinusoidal positional encoding for transformer.
+    Adds (sin, cos) vectors of different frequencies to input embeddings.
+    """
     def __init__(self, d_model, dropout, max_len=5000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
-
-        # 初始化Shape为(max_len, d_model)的PE (positional encoding)
         pe = torch.zeros(max_len, d_model)
-        # 初始化一个tensor [[0, 1, 2, 3, ...]]
         position = torch.arange(0, max_len).unsqueeze(1)
-        # 这里就是sin和cos括号中的内容，通过e和ln进行了变换
+        
+        # Below are argument inside sin/cos, scaled by exp and log
         div_term = torch.exp(
             torch.arange(0, d_model, 2) * -(math.log(10000.0) / d_model)
         )
-        # 计算PE(pos, 2i)
+        # even indices
         pe[:, 0::2] = torch.sin(position * div_term)
-        # 计算PE(pos, 2i+1)
+        # odd indices
         pe[:, 1::2] = torch.cos(position * div_term)
-        # 为了方便计算，在最外面在unsqueeze出一个batch
+        # add batch dimension for broadcasting
         pe = pe.unsqueeze(0)
-        # 如果一个参数不参与梯度下降，但又希望保存model的时候将其保存下来
-        # 这个时候就可以用register_buffer
+        
         self.register_buffer("pe", pe)
 
     def forward(self, x):
         """
-        x 为embedding后的inputs，例如(1,7, 128)，batch size为1,7个单词，单词维度为128
+        x: embedded inputs, e.g. (1, 7, 128) — batch_size = 1, 7 tokens, dim = 128
         """
-        # 将x和positional encoding相加。
+        # add positional encoding to embeddings
         x = x + self.pe[:, : x.size(1)].requires_grad_(False)
         return self.dropout(x)
 
 
 class myTransformer(nn.Module):
-
+    """
+    Transformer-based seq-to-seq model:
+    Encoder: EEG features from MyEEGNet_embedding
+    Decoder: regresses latent video representation frame-by-frame
+    Also outputs an auxiliary text-label logits vector.
+    """
     def __init__(self, d_model=512):
         super(myTransformer, self).__init__()
 
@@ -137,62 +145,38 @@ class myTransformer(nn.Module):
             nn.TransformerDecoderLayer(d_model=d_model, nhead=4, batch_first=True),
             num_layers=4
         )
-
-        # 定义位置编码器
+        
         self.positional_encoding = PositionalEncoding(d_model, dropout=0)
 
         self.txtpredictor = nn.Linear(512, 13)
 
-        # 定义最后的线性层，这里并没有用Softmax，因为没必要。
-        # 因为后面的CrossEntropyLoss中自带了
+        # final linear layer (no Softmax needed, CrossEntropyLoss handles it)
         self.predictor = nn.Linear(512, 4 * 36 * 64)
 
     def forward(self, src, tgt):
-        # 对src和tgt进行编码
-        # x = torch.rand(size=(32, 10, 62, 200))
+        # src: (B, 7, 62, 100)  ->  encode to (B, 7, d_model)
         src = self.eeg_embedding(src.reshape(src.shape[0] * src.shape[1], 1, 62, 100)).reshape(src.shape[0], 7, -1)
-        # print("src.shape = ", src.shape)
-
         tgt = tgt.reshape(tgt.shape[0], tgt.shape[1], tgt.shape[2] * tgt.shape[3] * tgt.shape[4])
         tgt = self.img_embedding(tgt)
-        # print("tgt.shape = ", tgt.shape)
-        # 给src和tgt的token增加位置信息
+        
+        # add positional encoding
         src = self.positional_encoding(src)
         tgt = self.positional_encoding(tgt)
 
-        # 生成mask
+        # causal mask for decoder
         tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.size()[-2]).to(tgt.device)
-        # print("mask:", tgt_mask)
-        # src_key_padding_mask = myTransformer.get_key_padding_mask(src)
-        # tgt_key_padding_mask = myTransformer.get_key_padding_mask(tgt)
 
-        # 使用 Transformer Encoder 对输入序列进行编码
+        # encoder pass
         encoder_output = self.transformer_encoder(src)
-        #print("en.shape = ", encoder_output.shape)
-
-        # 使用 Transformer Decoder 对目标序列进行解码
-        #print(tgt.shape)
+        
+        # auto-regressive decoder: start with single zero token, append predictions
         new_tgt = torch.zeros((tgt.shape[0], 1, tgt.shape[2])).cuda()
         for i in range(6):
             decoder_output = self.transformer_decoder(new_tgt, encoder_output, tgt_mask=tgt_mask[:i+1, :i+1])
-
-            # print(new_tgt.shape)
             new_tgt = torch.cat((new_tgt, decoder_output[:, -1:, :]), dim=1)
-
-        #decoder_output = self.transformer_decoder(tgt, encoder_output, tgt_mask=tgt_mask)
-
-        #print("new_tgt.shape = ", new_tgt.shape)
-
+        # average encoder output for auxiliary text classification
         encoder_output = torch.mean(encoder_output, dim=1)
-        # print(encoder_output.shape)
-
-        return self.txtpredictor(encoder_output), self.predictor(new_tgt).reshape(new_tgt.shape[0],
-                                                                                         new_tgt.shape[1], 4, 36,
-                                                                                         64)
-
-
-# criteria = nn.CrossEntropyLoss()
-# optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
+        return self.txtpredictor(encoder_output), self.predictor(new_tgt).reshape(new_tgt.shape[0],new_tgt.shape[1], 4, 36, 64)
 
 def evaluate_accuracy_auto(net, data_iter, device):
     loss = nn.MSELoss()
@@ -232,18 +216,15 @@ class Dataset():
     def __getitem__(self, item):
         return self.eeg[item], self.video[item]
 
-
     def __len__(self):
         return self.len
 
     def __getitem__(self, item):
         return self.eeg[item], self.video[item]
 
-
 def loss(true, pred):
     l = nn.MSELoss()
     return l(true, pred)
-
 
 def normalizetion(data):
     mean = torch.mean(data, dim=(0, 2, 3, 4), dtype=torch.float64)
@@ -272,10 +253,10 @@ GT_label = np.array([[23, 22, 9, 6, 18, 14, 5, 36, 25, 19, 28, 35, 3, 16, 24, 40
                       26, 6, 14, 37, 9, 12, 19, 30, 5, 28, 32, 4, 13, 18, 21, 20, 7, 11, 33, 38],
                      [38, 34, 40, 10, 28, 7, 1, 37, 22, 9, 16, 5, 12, 36, 20, 30, 6, 15, 35, 2,
                       31, 26, 18, 24, 8, 3, 23, 19, 14, 13, 21, 4, 25, 11, 32, 17, 39, 29, 33, 27]
-                     ])
+                     ])# (7, 40) ground-truth order for each block
 
 if __name__ == "__main__":
-    eegdata = np.load('/home/drink/SEED-DV/Segmented_Rawf_200Hz_2s/sub1.npy') #(7, 40, 5, 62, 400)
+    eegdata = np.load('SEED-DV/Segmented_Rawf_200Hz_2s/sub1.npy') #(7, 40, 5, 62, 400)
     chosed_index = []
     for i in range(7):
         index = [list(GT_label[i]).index(element) for element in chosed_label]
@@ -296,6 +277,7 @@ if __name__ == "__main__":
     new_latent = rearrange(new_latent, "g p d c f h w -> (g p d) c f h w")
     new_latent = torch.from_numpy(new_latent) #(1200, 4, 6, 36, 64)
     
+    # sliding-window EEG slicing (100-pt window, 50-pt overlap) -> 7 windows per trial
     window_size = 100
     overlap = 50
     EEG = []
@@ -325,29 +307,31 @@ if __name__ == "__main__":
 
     dataset = Dataset(EEG, latent_data)
     train_dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
-    model_file='../checkpoints/seq2seqmodel.pt'
+    
+    #model_file='../checkpoints/seq2seqmodel.pt'
     model = myTransformer()
-    model.load_state_dict(torch.load(model_file, map_location=lambda storage, loc: storage)['state_dict'])
-    model =model.cuda()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-6)
+    #model.load_state_dict(torch.load(model_file, map_location=lambda storage, loc: storage)['state_dict'])
+    model = model.cuda()
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200 * len(train_dataloader))
     latent_out = None
-    for epoch in tqdm(range(25)):
+    # training loop
+    for epoch in tqdm(range(200)):
         model.train()
         epoch_loss = 0
         for i, batch in enumerate(train_dataloader):
             eeg, video = batch
             eeg = eeg.float().cuda()
 
+            # pad decoder input with one zero frame at start
             b, _, c, w, h = video.shape
             padded_video = torch.zeros((b, 1, c, w, h))
             full_video = torch.cat((padded_video, video), dim=1).float().cuda()
             optimizer.zero_grad()
 
             txt_label, out = model(eeg, full_video)
-            # print(out[:,:-1,:].shape)
-            # if epoch == 199:
-            #     latent_out.append(out[:, :-1, :].cpu().detach().numpy())
+            
+            # MSE between predicted frames and ground-truth video
             video = video.float().cuda()
             l = loss(video, out[:, :-1, :])
             l.backward()
@@ -366,9 +350,7 @@ if __name__ == "__main__":
     txt_label, out = model(test_eeg, full_video)
     latent_out = out[:, :-1, :].cpu().detach().numpy()
     latent_out = np.array(latent_out)
-    print(latent_out.shape)
+    
     np.save('latent_out_block7_40_classes.npy', latent_out)
     model_dict = model.state_dict()
     torch.save({'state_dict': model_dict}, f'../checkpoints/seq2seqmodel.pt')
-
-
