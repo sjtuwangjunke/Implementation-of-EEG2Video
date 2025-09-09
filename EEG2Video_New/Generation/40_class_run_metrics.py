@@ -1,10 +1,3 @@
-'''
-Description: 
-Author: Zhou Tianyi
-Date: 2025-01-15 02:45:11
-LastEditTime: 2025-04-20 01:24:43
-LastEditors:  
-'''
 import numpy as np
 from transformers import pipeline
 from typing import Callable, List, Optional, Union
@@ -44,8 +37,8 @@ class clip_score:
                 cache_dir: str = '.cache'
                 ):
         self.device = device
-        self.clip_model = CLIPVisionModelWithProjection.from_pretrained('/home/drink/huggingface/clip-vit-large-patch14').to(device, torch.float16)
-        self.clip_processor = AutoProcessor.from_pretrained('/home/drink/huggingface/clip-vit-large-patch14')
+        self.clip_model = CLIPVisionModelWithProjection.from_pretrained('openai/clip-vit-large-patch14').to(device, torch.float16)
+        self.clip_processor = AutoProcessor.from_pretrained('openai/clip-vit-large-patch14')
         self.clip_model.eval()
 
     @torch.no_grad()
@@ -92,8 +85,8 @@ def img_classify_metric(
     # pred_videos: n, 256, 256, 3 in pixel values: 0 ~ 255
     # gt_videos: n, 256, 256, 3 in pixel values: 0 ~ 255
     assert n_way > top_k
-    processor = ViTImageProcessor.from_pretrained('/home/drink/huggingface/vit-base-patch16-224')
-    model = ViTForImageClassification.from_pretrained('/home/drink/huggingface/vit-base-patch16-224').to(device, torch.float16)
+    processor = ViTImageProcessor.from_pretrained('google/vit-base-patch16-224')
+    model = ViTForImageClassification.from_pretrained('google/vit-base-patch16-224').to(device, torch.float16)
     model.eval()
     
     acc_list = []
@@ -132,8 +125,8 @@ def video_classify_metric(
     # pred_videos: n, 6, 256, 256, 3 in pixel values: 0 ~ 255
     # gt_videos: n, 6, 256, 256, 3 in pixel values: 0 ~ 255
     assert n_way > top_k
-    processor = VideoMAEImageProcessor.from_pretrained('/home/drink/huggingface/videomae-base-finetuned-kinetics')
-    model = VideoMAEForVideoClassification.from_pretrained('/home/drink/huggingface/videomae-base-finetuned-kinetics', num_frames=num_frames).to(device, torch.float16)
+    processor = VideoMAEImageProcessor.from_pretrained('MCG-NJU/videomae-base-finetuned-kinetics')
+    model = VideoMAEForVideoClassification.from_pretrained('MCG-NJU/videomae-base-finetuned-kinetics', num_frames=num_frames).to(device, torch.float16)
     model.eval()
 
     acc_list = []
@@ -347,8 +340,8 @@ GT_label = np.array([[23, 22, 9, 6, 18,       14, 5, 36, 25, 19,      28, 35, 3,
             [38, 34, 40, 10, 28,     7, 1, 37, 22, 9,        16, 5, 12, 36, 20,      30, 6, 15, 35, 2,
              31, 26, 18, 24, 8,      3, 23, 19, 14, 13,      21, 4, 25, 11, 32,      17, 39, 29, 33, 27]
             ])
-# chosed_label = [1, 10, 12, 16, 19, 23, 25, 31, 34, 39]
-chosed_label = [i for i in range(1,41)]
+GT_label = GT_label - 1
+chosed_label = [i for i in range(40)]
 indices = [list(GT_label[6]).index(element) for element in chosed_label]
 
 video_2way_acc = []
@@ -357,7 +350,7 @@ image_2way_acc = []
 image_40way_acc = []
 image_ssim = []
 
-gt_path ='/home/drink/SEED-DV/Video_Gif/Block7/'
+gt_path ='SEED-DV/Video_Gif/Block7/'
 pred_path ='40_Classes_Fullmodel/EEG2Video/'
 # seed_everything(114514)
 for i in range(200):
@@ -368,7 +361,6 @@ for i in range(200):
     gt_video = imageio.mimread(f'{gt_path}'+str(gt_video_id)+'.gif')
     pred_video = imageio.mimread(f'{pred_path}'+str(i)+'.gif')
     gt_video = np.concatenate(gt_video).reshape(6,288,512,3)
-    # reshape(6, 512, 288, 3)
     
     pred_video = np.concatenate(pred_video).reshape(6, 288, 512, 3)
 
@@ -443,17 +435,3 @@ print("video_40way_acc = ", np.mean(np.array(video_40way_acc)), np.std(np.array(
 print("image_2way_acc = ", np.mean(np.array(image_2way_acc)), np.std(np.array(image_2way_acc)))
 print("image_40way_acc = ", np.mean(np.array(image_40way_acc)), np.std(np.array(image_40way_acc)))
 print("image_ssim = ", np.mean(np.array(image_ssim)), np.std(np.array(image_ssim)))
-
-#text(block7.pt):
-#video_2way_acc =  0.7691999999999999 0.19802615988803093
-#video_40way_acc =  0.1047 0.2291242239484948
-#image_2way_acc =  0.6862916666666667 0.24397847909987655
-#image_40way_acc =  0.06393333333333333 0.17805906011458358
-#image_ssim =  0.0875491890848997 0.05149164867205016
-
-#sub1_session7_embedding
-#video_2way_acc =  0.78515 0.2019628121709539
-#video_40way_acc =  0.07515 0.1713446161978835
-#image_2way_acc =  0.6575333333333333 0.2378709360603397
-#image_40way_acc =  0.035083333333333334 0.13914198882995582
-#image_ssim =  0.3463338291797065 0.19682548448692846
