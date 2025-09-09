@@ -1,10 +1,3 @@
-'''
-Description: 
-Author: Zhou Tianyi
-Date: 2025-01-15 13:19:15
-LastEditTime: 2025-04-11 07:53:01
-LastEditors:  
-'''
 import os
 import imageio
 import numpy as np
