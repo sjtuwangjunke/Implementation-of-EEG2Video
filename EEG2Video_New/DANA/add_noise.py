@@ -1,21 +1,11 @@
 import numpy as np 
-
-
-
-'''
-Description: 
-Author: Zhou Tianyi
-Date: 2025-03-24 11:43:25
-LastEditTime: 2025-04-24 14:25:17
-LastEditors:  
-'''
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from tqdm.auto import tqdm
 import math
-import os.path as osp
+from einops import rearrange
 
 class Diffusion(object):
     def __init__(self, time_steps):
@@ -32,10 +22,8 @@ class Diffusion(object):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-
     def _get_index_from_list(self, vals: torch.Tensor, t: torch.Tensor, x_shape: torch.Size) -> torch.Tensor:
-        
+        # gather coefficients for timestep t and reshape to match x
         batch_size = t.shape[0]  # batch_size
         out = vals.gather(-1, t.cpu())  # (batch_size, 1)
 
@@ -45,13 +33,15 @@ class Diffusion(object):
         return torch.linspace(start, end, self.time_steps)
 
     def forward(self, x_0, dynamic_beta):
+        # add noise to x_0 according to DDPM forward process
         b, f, c, h, w = x_0.shape
         t = torch.randint(0, self.time_steps, (b,)).cuda().long()
 
         diverse_noise = torch.randn_like(x_0).to(self.device)
         same_noise_i = torch.randn((b, 1, c, h, w)).to(self.device)
         same_noise = same_noise_i.repeat(1, f, 1, 1, 1)
-
+        
+        # combine diverse and shared noise controlled by dynamic_beta
         diverse_noise = diverse_noise * math.sqrt(1-dynamic_beta)
         same_noise = same_noise * math.sqrt(dynamic_beta)
 
@@ -97,25 +87,26 @@ GT_label = np.array([[23, 22, 9, 6, 18,       14, 5, 36, 25, 19,      28, 35, 3,
             [38, 34, 40, 10, 28,     7, 1, 37, 22, 9,        16, 5, 12, 36, 20,      30, 6, 15, 35, 2,
              31, 26, 18, 24, 8,      3, 23, 19, 14, 13,      21, 4, 25, 11, 32,      17, 39, 29, 33, 27]
             ])
-from einops import rearrange
 chosed_label = [i for i in range(1,41)]
 if __name__ == '__main__':
-    latents = np.load('/home/drink/EEG2Video/EEG2Video_New/Seq2Seq/latent_out_block7_40_classes.npy')
-    opt = np.load('/home/drink/SEED-DV/Video/meta-info/All_video_optical_flow_score.npy')[6]#[200,]
-    print(opt.shape)
+    # load latent codes and optical-flow scores
+    latents = np.load('EEG2Video/EEG2Video_New/Seq2Seq/latent_out_block7_40_classes.npy')
+    opt = np.load('SEED-DV/Video/meta-info/All_video_optical_flow_score.npy')[6]#[200,]
+
+    # binarize scores and reorder according to GT_label
     labels = np.where(opt >= 1.799, 1, 0)
     label = rearrange(labels,'(a b)  -> a b',a=40)
     indices = [list(GT_label[6]).index(element) for element in chosed_label]
     label2 = label[indices,:]
-    
     label = rearrange(label2,'a b -> (a b)')
-    print(label.shape)
     
     x_0 = latents
     x_0 = torch.from_numpy(x_0)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_data =None
+    
+    # add noise to each latent with class-dependent beta
     for i in range(200):
         dynamic_beta=0.3 if labels[i] ==1 else 0.2
         diffusion = Diffusion(time_steps=500)
