@@ -1,9 +1,8 @@
-#pretrained_model_path: "Zhoutianyi/huggingface/stable-diffusion-v1-4"
-pretrained_model_path: "/home/drink/huggingface/stable-diffusion-v1-4"
+pretrained_model_path: "CompVis/stable-diffusion-v1-4"
 output_dir: "./outputs/40_classes_200_epoch/"
 
 train_data:
-  video_path: "/home/drink/SEED-DV/Video_Mp4/Block1/163.mp4"
+  video_path: "SEED-DV/Video_Mp4/Block1/162.mp4"
   prompt: "a turtle swimming in the water"
   n_sample_frames: 6
   width: 512
@@ -25,10 +24,10 @@ validation_data:
   num_inv_steps: 50
 
 learning_rate: 3e-5
-train_batch_size: 4 #10
-max_train_steps: 200 #200
-checkpointing_steps: 1000 #1000
-validation_steps: 100 #100
+train_batch_size: 10
+max_train_steps: 200
+checkpointing_steps: 1000 
+validation_steps: 100
 trainable_modules:
   - "attn1.to_q"
   - "attn2.to_q"
