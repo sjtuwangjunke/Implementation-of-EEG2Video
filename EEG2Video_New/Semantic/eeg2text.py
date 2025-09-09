@@ -87,7 +87,7 @@ device='cuda:0'
 if __name__ == '__main__':
     
     # 1. load EEG  (7 blocks, 40 vids, 5 trials, 62 ch, 400 t) → (1200, 310)
-    eeg_data = np.load('/home/drink/SEED-DV/DE_1per2s/sub1.npy') #[7,40,5,62,400]
+    eeg_data = np.load('SEED-DV/DE_1per2s/sub1.npy') #[7,40,5,62,400]
     eeg_label = []
     eeg = []
     for i in range(6):
@@ -147,4 +147,5 @@ if __name__ == '__main__':
         print(epoch_loss)
 
     model_dict = model.state_dict()
+
     torch.save({'state_dict': model_dict}, f'../checkpoints/Semantic/eeg2text.pt')
