@@ -1,9 +1,3 @@
-'''
-Description: 
-Author: Zhou Tianyi
-LastEditTime: 2025-04-24 14:43:06
-LastEditors:  
-'''
 # Adapted from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py
 
 import inspect
@@ -336,5 +330,6 @@ class TuneAVideoPipeline(DiffusionPipeline):
 
         if not return_dict:
             return video
+
 
         return TuneAVideoPipelineOutput(videos=video)
