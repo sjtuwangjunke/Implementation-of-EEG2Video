@@ -19,16 +19,12 @@ class CLIP(nn.Module):
             nn.Linear(10000, 10000),
             nn.ReLU(),
             nn.Linear(10000, 10000),
-            # nn.BatchNorm1d(50000),
             nn.ReLU(),
-            # nn.Linear(10000, 10000),
-            # nn.ReLU(),
             nn.Linear(10000, 77 * 768)
         )
 
     def forward(self, eeg):
-        eeg_embeddings = self.mlp(eeg)
-          # shape: (batch_size)
+        eeg_embeddings = self.mlp(eeg) # (B, 77*768)
         return eeg_embeddings
 
 
@@ -42,12 +38,9 @@ def cross_entropy(preds, targets, reduction='none'):
 
 class Dataset():
     def __init__(self, eeg, text):
-
-
         self.eeg = eeg
         self.text = text
         self.len = eeg.shape[0]
-
 
     def __len__(self):
         return self.len
@@ -70,11 +63,12 @@ GT_label = np.array([[23, 22, 9, 6, 18,       14, 5, 36, 25, 19,      28, 35, 3,
             [38, 34, 40, 10, 28,     7, 1, 37, 22, 9,        16, 5, 12, 36, 20,      30, 6, 15, 35, 2,
              31, 26, 18, 24, 8,      3, 23, 19, 14, 13,      21, 4, 25, 11, 32,      17, 39, 29, 33, 27]
             ])
-# chosed_label = [1, 10, 12, 16, 19, 23, 25, 31, 34, 39]
+
 chosed_label = [i for i in range(1,41)]
 labels = np.zeros((40, 5, 62, 5))
 for i in range(40):
     labels[i]=i
+    
 import random
 def seed_everything(seed=0, cudnn_deterministic=True):
     random.seed(seed)
@@ -92,13 +86,7 @@ seed_everything(114514)
 device='cuda:0'
 
 if __name__ == '__main__':
-    torch.backends.cudnn.benchmark = False   # 省显存
-    torch.backends.cuda.matmul.allow_tf32 = False
-    torch.backends.cudnn.allow_tf32 = False
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
-    
-    eeg_data = np.load('/home/drink/SEED-DV/DE_1per2s/sub1.npy') #[7,40,5,62,400]
-    eeg_label = []
+    eeg_data = np.load('SEED-DV/DE_1per2s/sub1.npy') #[7,40,5,62,400]
     eeg = []
     indices = [list(GT_label[6]).index(element) for element in chosed_label]
     chosed_eeg = eeg_data[6][indices,:]
@@ -113,12 +101,12 @@ if __name__ == '__main__':
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     model = CLIP().to(device)
 
-    ckpt = torch.load('/home/drink/EEG2Video/EEG2Video_New/checkpoints/Semantic/epoch200_eeg2text_40_classes.pt',
+    ckpt = torch.load('../checkpoints/Semantic/eeg2text.pt',
                   map_location=device)
     model.load_state_dict(ckpt['state_dict'])
-    model.eval()          # 关键：推理模式
+    model.eval()
     torch.set_grad_enabled(False)
-    eeg = torch.from_numpy(eeg.astype(np.float32)).to(device)  # 转为 torch、搬到 GPU/CPU
+    eeg = torch.from_numpy(eeg.astype(np.float32)).to(device) 
 
     with torch.no_grad():
         eeg_embeddings = model(eeg)        # -> [200, 77*768]
