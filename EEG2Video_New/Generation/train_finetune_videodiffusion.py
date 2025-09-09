@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import logging
 import inspect
 import math
@@ -9,8 +8,6 @@ from omegaconf import OmegaConf
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torch.utils.checkpoint
-import sys
 
 import diffusers
 import transformers
@@ -25,7 +22,7 @@ from tqdm import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from models.unet import UNet3DConditionModel
-from tuneavideo.data.dataset import TuneAVideoDataset, TuneMultiVideoDataset
+from tuneavideo.data.dataset import TuneMultiVideoDataset
 from pipelines.pipeline_tuneavideo import TuneAVideoPipeline
 from tuneavideo.util import save_videos_grid, ddim_inversion
 from einops import rearrange
@@ -56,10 +53,7 @@ GT_label = GT_label - 1
 All_label = np.empty((0, 200))
 for block_id in range(7):
     All_label = np.concatenate((All_label, GT_label[block_id].repeat(5).reshape(1, 200)))
-# selected_labels = list({0, 9, 11, 15, 18, 22, 24, 30, 33, 38})
-#selected_labels = list({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) # 你想要筛选的视频类别
 chosed_label = [i for i in range(40)]
-# 获取匹配的索引
 selected_indices = np.where(np.isin(All_label[0].flatten(), chosed_label))[0] 
 
 
@@ -121,8 +115,6 @@ def main(
 
     # Handle the output folder creation
     if accelerator.is_main_process:
-        # now = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-        # output_dir = os.path.join(output_dir, now)
         os.makedirs(output_dir, exist_ok=True)
         os.makedirs(f"{output_dir}/samples", exist_ok=True)
         os.makedirs(f"{output_dir}/inv_latents", exist_ok=True)
@@ -181,11 +173,8 @@ def main(
     )
 
     # Get the training dataset
-    #train_dataset = TuneAVideoDataset(**train_data)
     train_dataset = TuneMultiVideoDataset(**train_data)
-    # video_name_list = ['1st_10min', '2nd_10min', '3rd_10min', '4th_10min', '5th_10min']
-    #video_name_list = ['1st_10min']
-    video_path = '/home/drink/SEED-DV/Video_Mp4/Block1'
+    video_path = 'SEED-DV/Video_Mp4/Block1'
     video_files = []
     video_ind = selected_indices
     for ind in video_ind:
@@ -194,17 +183,13 @@ def main(
         
     train_dataset.video_path = video_files
 
-    # text_path = './text'
     text_prompts = []
-    video_text = '/home/drink/SEED-DV/Video/BLIP-caption/1st_10min.txt'
+    video_text = 'SEED-DV/Video/BLIP-caption/1st_10min.txt'
 
     with open(video_text, 'r') as f:
         for line in f:
             text_prompts.append(line.strip())
     selected_texts = [text_prompts[ind].strip() for ind in selected_indices]
-    # with open(video_text, 'r') as f:
-    #     for line in f:
-    #         text_prompts.append(line.strip())
         
     train_dataset.prompt = selected_texts
     print("video_path_length:", len(train_dataset.video_path))
@@ -347,15 +332,6 @@ def main(
                 samples = []
                 generator = torch.Generator(device=latents.device)
                 generator.manual_seed(seed)
-
-                ddim_inv_latent = None
-                # if validation_data.use_inv_latent:
-                #     inv_latents_path = os.path.join(output_dir, f"inv_latents/ddim_latent-{epoch}.pt")
-                #     ddim_inv_latent = ddim_inversion(
-                #         validation_pipeline, ddim_inv_scheduler, video_latent=latents,
-                #         num_inv_steps=validation_data.num_inv_steps, prompt="")[-1].to(weight_dtype)
-                #     torch.save(ddim_inv_latent, inv_latents_path)
-
                 for idx, prompt in enumerate(validation_data.prompts):
                     sample = validation_pipeline(prompt, generator=generator, latents=None,
                                                  **validation_data).videos
