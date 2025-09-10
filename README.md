@@ -35,7 +35,7 @@ If you use this code or the original EEG2Video model, please cite:
   author={Liu, Xuan-Hao and Liu, Yan-Kai and Wang, Yansen and Ren, Kan and Shi, Hanwen and Wang, Zilong and Li, Dongsheng and Lu, Bao-Liang and Zheng, Wei-Long},
   booktitle={NeurIPS},
   year={2024}
+```
 
 ## Credits
-- `EEG2Video_New/Seq2Seq/train_latents_generator.py` and `EEG2Video_New/Seq2Seq/train_latents_generator.py` are based on a code snippet posted by GitHub user [@gaspachoo](https://github.com/gaspachoo)  
-  in [this comment](https://github.com/XuanhaoLiu/EEG2Video/issues/27#issuecomment-2921221772).  
+- `EEG2Video_New/Seq2Seq/train_latents_generator.py` and `EEG2Video_New/Seq2Seq/train_latents_generator.py` are based on a code snippet posted by GitHub user [@gaspachoo](https://github.com/gaspachoo) in [this comment](https://github.com/XuanhaoLiu/EEG2Video/issues/27#issuecomment-2921221772).  
