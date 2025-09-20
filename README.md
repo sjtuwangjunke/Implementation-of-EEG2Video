@@ -17,7 +17,7 @@ This repository is a **reorganized and extended version** of the official implem
 
 2. Download this repository: ``git clone https://github.com/sjtuwangjunke/Implementation-of-EEG2Video.git``
 
-3. Create a conda environment and install the packages necessary to run the code. (GTX4060 and python3.9 on my own device)
+3. Create a conda environment and install the packages necessary to run the code. (RTX4060 and python3.9 on my own device)
 
 ```bash
 conda create -n eegvideo python=3.9 -y
